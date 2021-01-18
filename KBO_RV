@@ -1,0 +1,351 @@
+library(tidyverse)
+
+# loading charte KBO data
+# have not made this publicly available
+junejulyaug <- read.csv("app data.csv") #loading data
+august <- read.csv("august.csv")
+sept <- read.csv("september.csv")
+october <- read.csv("October.csv")
+november <- read.csv("november.csv")
+
+data <- rbind(junejulyaug, august)
+data <- rbind(data, sept)
+data <- rbind(data, october)
+data <- rbind(data, november)
+
+table(data$Pitch)
+
+data <- data %>%
+  mutate(Pitch = ifelse(Pitch == "", "Unknown", paste(Pitch))) #assinging "unknown" to pitch types not recorded
+data <- data %>%
+  mutate(Pitch = ifelse(Pitch == "fastball", "4-Seam", paste(Pitch)))
+data <- data %>%
+  mutate(Pitch = ifelse(Pitch == "2-seam", "Sinker", paste(Pitch)))
+data <- data %>%
+  mutate(Pitch = ifelse(Pitch == "4-seam", "4-Seam", paste(Pitch))) %>%
+  mutate(Bat..Name = ifelse(Bat..Name == "Mel Rojas Jr", "Mel Rojas Jr.",
+                            paste(Bat..Name))) %>%
+  mutate(Pitch = ifelse(Player == "Chris Flexen" & Pitch == "Cutter", "Slider",
+                        paste(Pitch)))
+data <- data %>%
+  mutate(Label = paste0(Player, sep = ", ", data$Throws, sep = ", " , data$Team))
+data <- data %>%
+  mutate(Bats2 = ifelse(Bats == "L", "LHH", "RHH")) #clean up Batter Side
+data<- data %>%
+  mutate(Hitter = paste0(Bat..Name, sep = ", ", data$Bats2, sep = ", ", data$Bat.Team))
+data <- data %>%
+  mutate(All = paste("All")) #for pitch filtering purposes
+data <- data %>%
+  mutate(Region = ifelse((x >= -0.558 & x <= 0.558 & y >= 1.83 & y <= 3.167), "Heart", 
+                         ifelse((x >= -1.11 & x <= 1.11 & y >= 1.167 & y <= 3.833) , "Shadow" ,
+                                ifelse((x >= -1.67 & x <= 1.67 & y >= 0.1667 & y <= 4.5) , "Chase" , "Waste"))))
+
+data <- data %>%
+  mutate(Outcome = ifelse(Result == "ss", "Swinging Strike", 
+                          ifelse(Result == "s", "Called Strike",
+                                 ifelse(Result == "hbp", "Hit-by-Pitch",
+                                        ifelse(Result == "go", "Groundout",
+                                               ifelse(Result == "fo", "Fly Out",
+                                                      ifelse(Result == "f", "Foul Ball",
+                                                             ifelse(Result == "b", "Ball",
+                                                                    ifelse(Result == "4", "HR",
+                                                                           ifelse(Result == "3", "Triple",
+                                                                                  ifelse(Result == "2", "Double", "Single")))))))))))
+data <- data %>%
+  mutate(BS = ifelse(Result == "b", "Ball", 
+                     ifelse(Result == "hbp", "Ball", "Strike")))
+data <- data %>%
+  mutate(Zone = ifelse((x >= -0.83 & x <= 0.83 & y >= 1.5 & y <=3.5), "Yes", "No"))
+
+data <- data %>%
+  mutate(PitchCat = ifelse(Pitch == "4-Seam" | Pitch == "Sinker" | Pitch == "Cutter", "Fastball",
+                           ifelse(Pitch == "Splitter" | Pitch == "Changeup", "Offspeed", "Breaking")))
+data <- data %>%
+  mutate(TS = ifelse(Result == "1" | Result == "2" | Result == "3" | Result == "4" | Result == "f" | Result == "ss" | Result == "go" | Result == "fo",
+                     "Swing", "Take"))
+data <- data %>%
+  mutate(`Batted Ball` = ifelse(batted_ball == "ground_ball", "Ground ball", 
+                                ifelse(batted_ball == "fly_ball", "Fly ball", 
+                                       ifelse(batted_ball == "line_drive", "Line drive",
+                                              ifelse(batted_ball == "pop_up", "Pop up", ""))))) %>%
+  mutate(Strength = ifelse(Contact == "hard", "Hard", 
+                           ifelse(Contact == "soft", "Soft", 
+                                  ifelse(Contact == "medium", "Medium", "")))) %>%
+  mutate(Direction = paste(Hit.Direction)) %>%
+  mutate(GameID = paste(Team, "vs", Bat.Team, "on", Date))
+
+data <- data %>%
+  group_by(GameID, OvrAtBat) %>%
+  mutate(BS = paste(as.factor(BS))) %>%
+  mutate(Ball = cumsum(lag(BS, default = "") == "Ball"),
+         Strike = cumsum(lag(BS, default = "") == "Strike"),
+         Count = paste0(Ball, Strike)) %>%
+  mutate(Strike = ifelse(Strike > 2, paste("2"),
+                         paste(Strike))) %>%
+  mutate(Ball = ifelse(Ball > 3, paste("3"),
+                       paste(Ball))) %>%
+  mutate(Count = paste0(Ball, Strike)) %>%
+  ungroup()
+
+data <- data %>%
+  mutate(AB_Result = ifelse(Count >= 30 & Result == "b", "Walk", 
+                            ifelse((Count == 02 | Count == 12 | Count == 22 | Count == 32) & 
+                                     (Result == "ss" | Result == "s"), "Strikeout",
+                                   ifelse(Result == "1", "Single", 
+                                          ifelse(Result == "2", "Double",
+                                                 ifelse(Result == "3", "Triple", 
+                                                        ifelse(Result == "4", "HR",
+                                                               ifelse(Result == "fo", "Fly Out",
+                                                                      ifelse(Result == "go", "Ground Out",
+                                                                             ifelse(Result == "hbp", "HBP",
+                                                                                    "")))))))))) %>%
+  mutate(ExwOBA = ifelse(AB_Result == "Strikeout", 0.000,
+                         ifelse(AB_Result == "Walk", 0.747,
+                                ifelse(AB_Result == "HBP", 0.823,
+                                       
+                                       ifelse(Contact == "soft" & batted_ball == "pop_up", 0.098619,
+                                              ifelse(Contact == "soft" & batted_ball == "line_drive", 0.622176,
+                                                     ifelse(Contact == "soft" & batted_ball == "ground_ball", 0.1405,
+                                                            ifelse(Contact == "soft" & batted_ball == "fly_ball", 0.16737,
+                                                                   
+                                                                   ifelse(Contact == "medium" & batted_ball == "pop_up", 0.280095,
+                                                                          ifelse(Contact == "medium" & batted_ball == "line_drive", 0.730514,
+                                                                                 ifelse(Contact == "medium" & batted_ball == "ground_ball", 0.325814,
+                                                                                        ifelse(Contact == "medium" & batted_ball == "fly_ball", 0.09355,
+                                                                                               
+                                                                                               ifelse(Contact == "hard" & batted_ball == "pop_up", 0.00,
+                                                                                                      ifelse(Contact == "hard" & batted_ball == "line_drive", 0.77113596,
+                                                                                                             ifelse(Contact == "hard" & batted_ball == "ground_ball", 0.55297,
+                                                                                                                    ifelse(Contact == "hard" & batted_ball == "fly_ball", 0.67750,
+                                                                                                                           "")))))))))))))))) %>%
+  mutate(ExwOBA = as.numeric(ExwOBA)) %>%
+  mutate(woba_value = ifelse(AB_Result == "Strikeout" | AB_Result == "Fly Out" | AB_Result == "Ground Out", 0.000,
+                             ifelse(AB_Result == "HBP", 0.823, 
+                                    ifelse(AB_Result == "Walk", 0.747,
+                                           ifelse(AB_Result == "Single", 0.928,
+                                                  ifelse(AB_Result == "Double", 1.242,
+                                                         ifelse(AB_Result == "Triple", 1.666,
+                                                                ifelse(AB_Result == "HR", 1.942, "")))))))) %>% #uses FanGraphs wOBA values
+  mutate(wOBA = as.numeric(woba_value)) %>%
+  mutate(InPlay = ifelse((Outcome == "Single" | Outcome == "Double" | Outcome == "Triple" | Outcome == "HR" |
+                            Outcome == "Fly Out" | Outcome == "Groundout"), "Yes", "No")) %>%
+  mutate(Nation = ifelse(grepl('-', Player), "Korean", 
+                         ifelse(Player == "Yang Hyun" | Player == "Ju Kwon" | Player == "Kwon Hwi" | Player == "Nam Ho", "Korean",
+                                "Foreign"))) %>% #designating foreign and Korean pitchers for a velocity comparison
+  mutate(Combined = paste0(Nation, ", ", Role)) %>%
+  mutate(woba_value2 = ifelse(AB_Result == "Strikeout" | AB_Result == "Fly Out" | AB_Result == "Ground Out", 0.000,
+                              ifelse(AB_Result == "HBP", 0.762, 
+                                     ifelse(AB_Result == "Walk", 0.733,
+                                            ifelse(AB_Result == "Single", 0.942,
+                                                   ifelse(AB_Result == "Double", 1.289,
+                                                          ifelse(AB_Result == "Triple", 1.602,
+                                                                 ifelse(AB_Result == "HR", 1.968, "")))))))) %>% #this wOBA uses data from Statiz fo wOBA weights
+  mutate(stat_wOBA = as.numeric(woba_value2)) %>% #very slight differences b/t FG and Statiz
+  mutate(ExwOBA_stat = ifelse(AB_Result == "Strikeout", 0.000,
+                              ifelse(AB_Result == "Walk", 0.733,
+                                     ifelse(AB_Result == "HBP", 0.762,
+                                            
+                                            ifelse(Contact == "soft" & batted_ball == "pop_up", 0.10014,
+                                                   ifelse(Contact == "soft" & batted_ball == "line_drive", 0.62894,
+                                                          ifelse(Contact == "soft" & batted_ball == "ground_ball", 0.1421,
+                                                                 ifelse(Contact == "soft" & batted_ball == "fly_ball", 0.17025,
+                                                                        
+                                                                        ifelse(Contact == "medium" & batted_ball == "pop_up", 0.2856667,
+                                                                               ifelse(Contact == "medium" & batted_ball == "line_drive", 0.74131,
+                                                                                      ifelse(Contact == "medium" & batted_ball == "ground_ball", 0.33011,
+                                                                                             ifelse(Contact == "medium" & batted_ball == "fly_ball", 0.0953,
+                                                                                                    
+                                                                                                    ifelse(Contact == "hard" & batted_ball == "pop_up", 0.00,
+                                                                                                           ifelse(Contact == "hard" & batted_ball == "line_drive", 0.791277,
+                                                                                                                  ifelse(Contact == "hard" & batted_ball == "ground_ball", 0.562638,
+                                                                                                                         ifelse(Contact == "hard" & batted_ball == "fly_ball", 0.68675975,
+                                                                                                                                "")))))))))))))))) %>%
+  mutate(ExwOBA_stat = as.numeric(ExwOBA_stat))
+
+### KBO Pitch Run Values
+
+rv <- data %>% #avg wOBA by pitch count
+  group_by(Count) %>%
+  summarise_at(vars(stat_wOBA, ExwOBA_stat), funs(round(mean(., na.rm = TRUE), digits = 3)))
+
+# KBO wOBA from Statiz: http://www.statiz.co.kr/constant.php
+wBB = 0.733
+wHBP = 0.762
+w1B = 0.942
+w2B = 1.289
+w3B = 1.602
+wHR = 1.968
+avg_wOBA = mean(data$stat_wOBA, na.rm = TRUE) #comes out to 0.339. On Statiz, 0.347 is the avg
+# but the charted data was skewed towards better pitchers so I used the avg from this dataset
+scale = 1.158
+R_PA = 0.131
+R_W = 10.746
+cFIP = 3.555
+
+(0.733 - avg_wOBA) / scale #value of a walk in wRAA/9
+(0 - avg_wOBA) / scale #value of strikeout in wRAA/9
+
+rv <- rv %>%
+  mutate(actual_wRAA = (stat_wOBA - avg_wOBA) / scale,
+         x_RAA = (ExwOBA_stat - avg_wOBA) / scale) # calculating wRAA values. both actual and expected
+
+result <- c("Out", "1B", "2B", "3B", "HR")
+woba <- c(0, 0.942, 1.289, 1.602, 1.968)
+
+events <- data.frame(result, woba) %>%
+  mutate(r_PA = (woba - avg_wOBA) / scale)
+
+bbe <- data %>% #used the combo of batted ball/contact
+  filter(Contact != "") %>%
+  mutate(all = ifelse(InPlay == "Yes", paste0(batted_ball, ", ", Contact),
+                      NA)) %>%
+  group_by(all) %>%
+  summarise_at(vars(stat_wOBA), funs(round(mean(., na.rm = TRUE), digits = 3))) %>%
+  mutate(r_PA = (stat_wOBA - avg_wOBA) / scale) %>%
+  filter(all != "")
+
+# value of a strike is the wRAA for a 0-0 count minus 0-1 count, etc.
+# putting this together for GB/FB/LD on each count state
+# decide if using bbe result or bbe type
+
+rv <- rv %>%
+  mutate(GB_hard = subset(bbe, all == "ground_ball, hard")$r_PA - actual_wRAA,
+         FB_hard = subset(bbe, all == "fly_ball, hard")$r_PA - actual_wRAA,
+         LD_hard = subset(bbe, all == "line_drive, hard")$r_PA - actual_wRAA,
+         PU_hard = subset(bbe, all == "pop_up, hard")$r_PA - actual_wRAA,
+         GB_medium = subset(bbe, all == "ground_ball, medium")$r_PA - actual_wRAA,
+         FB_medium = subset(bbe, all == "fly_ball, medium")$r_PA - actual_wRAA,
+         LD_medium = subset(bbe, all == "line_drive, medium")$r_PA - actual_wRAA,
+         PU_medium = subset(bbe, all == "pop_up, medium")$r_PA - actual_wRAA,
+         GB_soft = subset(bbe, all == "ground_ball, soft")$r_PA - actual_wRAA,
+         FB_soft = subset(bbe, all == "fly_ball, soft")$r_PA - actual_wRAA,
+         LD_soft = subset(bbe, all == "line_drive, soft")$r_PA - actual_wRAA,
+         PU_soft = subset(bbe, all == "pop_up, soft")$r_PA - actual_wRAA) #more wRAA numbers
+
+values <- write.csv(x = rv) #produces CSV
+#copied to Excel and calculate the wRAA for ball/strike on various counts in Excel
+#re-loaded data to work with
+#the strike/ball level results can be downloaded from GitHub
+#Warning: they are not clean and go out to like 12 decimal spaces
+values <- read.csv("val_three.csv") %>%
+  mutate(Count = ifelse(Count == 0, paste("00"),
+                        ifelse(Count == 1, paste("01"),
+                               ifelse(Count == 2, paste("02"),
+                                      paste(Count))))) #converting to CSV removes "uncessary" 0s so re-adding them to make counts workable
+
+val_use <- values %>%
+  dplyr::select(Count, Strike:PU_soft)
+
+names(val_use) <- c("Count", "Strike", "Ball", "ground_ball, hard", "fly_ball, hard", "line_drive, hard", "pop_up, hard", 
+                    "ground_ball, medium", "fly_ball, medium", "line_drive, medium", "pop_up, medium", 
+                    "ground_ball, soft", "fly_ball, soft", "line_drive, soft", "pop_up, soft") #rename to the combo that is on charted data to join together
+
+val_use <- val_use %>%
+  pivot_longer(!Count, names_to = "event", values_to = "rv")
+
+data <- data %>%
+  mutate(all = ifelse(InPlay == "Yes", paste0(batted_ball, ", ", Contact),
+                      NA)) %>%
+  mutate(event = ifelse(InPlay == "Yes", paste(all), BS))
+
+data <- right_join(data, val_use, by.x = "Count", by.y = "event")
+
+######################################
+### Showing wOBA on a Plot ###########
+
+x1 <- c(-0.83, 0.83, 0.83, -0.83, -0.83)
+y1 <- c(1.5, 1.5, 3.5, 3.5, 1.5)
+
+sz <- data.frame(x1, y1) #creating strikezone
+
+data %>%
+  filter(Player == "Dan Straily" & Pitch != "Unknown") %>%
+  ggplot() +
+  stat_summary_hex(aes(x = x, y = y, z = rv), fun = mean, binwidth = c(0.33, 0.33)) +
+  geom_path(data = sz, aes(x1, y1)) + theme_minimal() + 
+  scale_fill_gradient2(low = "blue", mid = "grey", midpoint = 0.00, high = "red") +
+  facet_grid(cols = vars(Pitch), rows = vars(Bats2)) +
+  labs(title = "Dan Straily Run Values",
+       subtitle = "Pitcher perspective", fill = "Run Value") +
+  theme(plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        panel.background = element_rect(fill = "white"),
+        plot.subtitle = element_text(hjust = 0.5)) +
+  xlim(-2, 2) + ylim(0, 6)
+
+rv_lb <- data %>% #cumulative RV by pitch
+  filter(Pitch != "Unknown") %>%
+  group_by(Player, Pitch) %>%
+  summarise_at(vars(rv), funs(round(sum(., na.rm = TRUE), digits = 3)))
+
+pitches_rv <- data %>% #count pitches thrown
+  filter(Pitch != "Unknown") %>%
+  group_by(Player, Pitch) %>%
+  count()
+
+rv_lb <- right_join(rv_lb, pitches_rv, by.x = "Player", by.y = "Pitch") %>%
+  mutate(`rv/100` = round((rv / n)*100, digits = 1)) %>%
+  mutate(All = "All") #creating RV/100
+
+types_rv <- data %>%
+  filter(Pitch != "Unknown" & ! is.na(Pitch)) %>%
+  group_by(Player) %>% #count pitch types thrown by each player
+  count() #use to calculate usage numbers
+
+rv_lb <- right_join(rv_lb, types_rv, by = "Player") %>%
+  mutate(usg = round((n.x / n.y)*100, digits = 1)) #usage
+
+velo_rv <- data %>% #avg velocity by pitch
+  filter(Pitch != "Unknown" & ! is.na(Pitch)) %>%
+  group_by(Player, Pitch) %>%
+  summarise_at(vars(Velocity), funs(round(mean(., na.rm = TRUE), digits = 1)))
+
+rv_lb <- right_join(rv_lb, velo_rv, by.x = "Player", by.y = "Pitch")
+
+#for filtering purposes in the app
+type_filter <- unique(data$Pitch)
+type_filter <- data.frame(type_filter)
+names(type_filter) <- c("Pitch Type")
+d_f <- c("All")
+d_f <- data.frame(d_f)
+names(d_f) <- c("Pitch Type")
+type_filter <- type_filter %>%
+  filter(`Pitch Type` != "Unknown") %>%
+  filter(! is.na(`Pitch Type`)) %>%
+  rbind(d_f) %>%
+  mutate(`Pitch Type` = as.character(`Pitch Type`)) %>%
+  arrange(`Pitch Type`)
+
+### Creating an R Shiny Dashboard to show the leaderboard
+# Has cumulative Run Values + RV/100
+# Filterable by pitch type
+
+library(shiny)
+library(DT)
+
+ui <- fluidPage(
+  navbarPage("KBO Run Value Leaderboard",
+             fluidPage(
+               column(selectInput("type_filter", "Filter By Pitch Type",
+                                  c(type_filter$`Pitch Type`),
+                                  selected = "All"), width = 4),
+               column(sliderInput("pitch_rv_filter", "Minimum Number of Pitches",
+                                  min = 0, max = max(rv_lb$n.x), value = 100, step = 10), width = 4),
+               DTOutput("pitcher_rv")
+             ))
+)
+
+server <- function(input, output, session) {
+  output$pitcher_rv <- renderDT(
+    rv_lb %>%
+      filter(n.x > input$pitch_rv_filter & (Pitch == input$type_filter | All == input$type_filter)) %>%
+      arrange(rv) %>%
+      dplyr::select(Player, Pitch, n.x, usg, Velocity, rv, `rv/100`) %>%
+      datatable(extensions = "Responsive", rownames = FALSE, colnames = c('Run Value' = 'rv',
+                                                                          'Pitches' = 'n.x',
+                                                                          'RV/100' = 'rv/100',
+                                                                          'Usg%' = 'usg')) %>%
+      formatStyle(c(2, 3, 4, 6), `border-right` = "solid 1px")
+  )
+}
+
+shinyApp(ui, server) #and voila, a leaderboard!
