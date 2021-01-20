@@ -1,6 +1,6 @@
 library(tidyverse)
 
-# loading charte KBO data
+# loading charted KBO data
 # have not made this publicly available
 junejulyaug <- read.csv("app data.csv") #loading data
 august <- read.csv("august.csv")
@@ -13,7 +13,9 @@ data <- rbind(data, sept)
 data <- rbind(data, october)
 data <- rbind(data, november)
 
-table(data$Pitch)
+table(data$Pitch) #check how many pitches were taken down; looking for misspellings, etc
+
+#cleaning the data and creating new variables as needed
 
 data <- data %>%
   mutate(Pitch = ifelse(Pitch == "", "Unknown", paste(Pitch))) #assinging "unknown" to pitch types not recorded
